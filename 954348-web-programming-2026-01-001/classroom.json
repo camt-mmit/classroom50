@@ -1,0 +1,11 @@
+{
+  "schema": "classroom50/classroom/v1",
+  "name": "954348: Web Programming (2026-01/001)",
+  "short_name": "954348-web-programming-2026-01-001",
+  "term": "01/2026 001",
+  "org": "camt-mmit",
+  "team": {
+    "id": 18214295,
+    "slug": "classroom50-954348-web-programming-2026-01-001"
+  }
+}
