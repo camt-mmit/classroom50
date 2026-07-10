@@ -6,14 +6,7 @@
       "name": "Template Control Flow",
       "mode": "individual",
       "autograder": "default",
-      "feedback_pr": true,
-      "due": "2026-07-17T03:39:00Z",
-      "due_meta": {
-        "input": "2026-07-17T10:39:00",
-        "zone": "Asia/Bangkok",
-        "offset": "+07:00",
-        "source": "auto-detected"
-      }
+      "feedback_pr": true
     }
   ]
 }
