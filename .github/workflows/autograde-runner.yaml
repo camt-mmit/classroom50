@@ -20,7 +20,7 @@ on:
 permissions:
   contents: write
   statuses: write
-  # pull-requests: write powers the opt-in Feedback PR (issue #86). The
+  # pull-requests: write powers the opt-in Feedback PR. The
   # calling shim must grant the same scope — a reusable workflow's
   # effective token is the intersection with the caller's permissions.
   pull-requests: write
@@ -47,15 +47,17 @@ jobs:
       node:           ${{ steps.read.outputs.node }}
       java:           ${{ steps.read.outputs.java }}
       go:             ${{ steps.read.outputs.go }}
+      rust:           ${{ steps.read.outputs.rust }}
       apt:            ${{ steps.read.outputs.apt }}
       base-url:       ${{ steps.read.outputs.base-url }}
       classroom:      ${{ steps.read.outputs.classroom }}
       assignment:     ${{ steps.read.outputs.assignment }}
+      secret:         ${{ steps.read.outputs.secret }}
       feedback-pr:    ${{ steps.read.outputs.feedback-pr }}
       mode:           ${{ steps.read.outputs.mode }}
       allowed-files:  ${{ steps.read.outputs.allowed-files }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Full history -- the acceptance check walks back to the commit
           # that added .classroom50.yaml; a shallow clone hides it.
@@ -178,6 +180,7 @@ jobs:
           import yaml
 
           _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,38}$")
+          _SECRET = re.compile(r"^[a-z0-9]{4,64}$")
           _LANG = re.compile(r"^[A-Za-z0-9._+-]{1,32}$")
           _APT  = re.compile(r"^[a-z0-9][a-z0-9.+-]{0,63}$")
           _IMAGE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$")
@@ -211,6 +214,13 @@ jobs:
           classroom  = safe((cfg.get("classroom") or "").strip(),  "classroom",  _SLUG)
           assignment = safe((cfg.get("assignment") or "").strip(), "assignment", _SLUG)
 
+          # Optional capability-URL secret. Present -> resources at
+          # <classroom>/<secret>/; absent -> plain path. Validated against the
+          # same strict regex as the other fields since it composes into a URL.
+          secret = (cfg.get("secret") or "").strip()
+          if secret and not _SECRET.match(secret):
+              fail(f".classroom50.yaml field 'secret' has invalid value {secret!r} (must match {_SECRET.pattern!r}) — re-run `gh student accept`")
+
           owner = os.environ["REPO_OWNER"]
           base_url = f"https://{owner}.github.io/classroom50"
 
@@ -228,7 +238,15 @@ jobs:
                           time.sleep(2 ** attempt); continue
                       raise
 
-          manifest_url = f"{base_url}/{classroom}/assignments.json"
+          # Secret-aware classroom path segment, mirroring runner.py's
+          # _classroom_segment and publish-pages.yaml's dest_prefix. Defined
+          # locally because this setup step runs before runner.py is fetched;
+          # keep it byte-identical to those copies (pinned by
+          # cli/shared/contract/contract_test.go).
+          def classroom_segment(classroom, secret):
+              return f"{classroom}/{secret}" if secret else classroom
+
+          manifest_url = f"{base_url}/{classroom_segment(classroom, secret)}/assignments.json"
           try:
               with get(manifest_url) as resp:
                   manifest = json.load(resp)
@@ -330,7 +348,7 @@ jobs:
           # A hand-edited assignments.json with extra keys (e.g. an
           # `options:` smuggled at runtime level) would otherwise pass
           # this validator silently while the CLI rejects it at write.
-          _RUNTIME_KEYS = {"runs-on", "container", "python", "node", "java", "go", "apt"}
+          _RUNTIME_KEYS = {"runs-on", "container", "python", "node", "java", "go", "rust", "apt"}
           extras = set(runtime) - _RUNTIME_KEYS
           if extras:
               fail(f"runtime has unsupported keys: {sorted(extras)}")
@@ -341,6 +359,7 @@ jobs:
           node      = runtime.get("node")     or ""
           java      = runtime.get("java")     or ""
           go        = runtime.get("go")       or ""
+          rust      = runtime.get("rust")     or ""
           apt       = runtime.get("apt")      or []
 
           # runs-on mirrors GitHub Actions: a single label or an array
@@ -429,7 +448,7 @@ jobs:
           # self-hosted target share one code path.
           runs_on_json = json.dumps(runs_on_labels)
 
-          for label, value in [("python", python), ("node", node), ("java", java), ("go", go)]:
+          for label, value in [("python", python), ("node", node), ("java", java), ("go", go), ("rust", rust)]:
               if value and (not isinstance(value, str) or not _LANG.match(value)):
                   fail(f"runtime.{label} {value!r} must match {_LANG.pattern}")
 
@@ -440,7 +459,7 @@ jobs:
                   fail(f"runtime.apt[{i}] {pkg!r} must match {_APT.pattern}")
           apt_str = " ".join(apt)
 
-          # === Feedback PR opt-in (issue #86) ===
+          # === Feedback PR opt-in ===
           # Mirror Go's bool `feedback_pr` field. Re-validated here (like
           # the tests/runtime blocks) so a hand-edited manifest fails at
           # setup with a clear error. Emitted as "true"/"false" so the
@@ -455,7 +474,7 @@ jobs:
           if mode not in ("individual", "group"):
               fail(f"entry {assignment!r}: mode {mode!r} must be 'individual' or 'group'")
 
-          # === Allowed-files allowlist (issue #169) ===
+          # === Allowed-files allowlist ===
           # Re-validate the hand-editable manifest field and emit it as a
           # JSON array for runner.py to enforce.
           allowed_files = entry.get("allowed_files", [])
@@ -481,10 +500,12 @@ jobs:
           emit("node", node)
           emit("java", java)
           emit("go", go)
+          emit("rust", rust)
           emit("apt", apt_str)
           emit("base-url", base_url)
           emit("classroom", classroom)
           emit("assignment", assignment)
+          emit("secret", secret)
           emit("feedback-pr", "true" if feedback_pr else "false")
           emit("mode", mode)
           emit("allowed-files", allowed_files_json)
@@ -510,16 +531,19 @@ jobs:
       CLASSROOM:      ${{ needs.setup.outputs.classroom }}
       ASSIGNMENT:     ${{ needs.setup.outputs.assignment }}
       SUBMISSION_TAG: ${{ needs.setup.outputs.submission-tag }}
+      # Optional capability-URL secret from .classroom50.yaml (via setup).
+      # runner.py inserts it into the fetch URLs; empty = plain path.
+      SECRET:         ${{ needs.setup.outputs.secret }}
       # Assignment mode (individual | group) from assignments.json, so
       # runner.py validates a group autograder's multi-username result.json
       # instead of rejecting it. Defaults to the stricter individual rule
       # when absent.
       MODE:           ${{ needs.setup.outputs.mode }}
-      # allowed_files patterns (JSON array) from assignments.json (#169);
+      # allowed_files patterns (JSON array) from assignments.json;
       # runner.py removes disallowed files before grading. "[]" = allow all.
       ALLOWED_FILES:  ${{ needs.setup.outputs.allowed-files }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.setup.outputs.submission-tag }}
           # Full history -- runner.py needs the student's baseline
@@ -533,20 +557,28 @@ jobs:
           python-version: ${{ needs.setup.outputs.python }}
 
       - if: needs.setup.outputs.node != ''
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ needs.setup.outputs.node }}
 
       - if: needs.setup.outputs.java != ''
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: ${{ needs.setup.outputs.java }}
 
       - if: needs.setup.outputs.go != ''
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ needs.setup.outputs.go }}
+
+      # No first-party setup-rust; dtolnay/rust-toolchain is the de-facto
+      # standard. Pinned to @master with an explicit `toolchain:` input
+      # (its @rev-derived default can't read a version from a SHA pin).
+      - if: needs.setup.outputs.rust != ''
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ needs.setup.outputs.rust }}
 
       - if: needs.setup.outputs.apt != '' && runner.os == 'Linux'
         run: |
@@ -621,7 +653,7 @@ jobs:
               --latest=false
           fi
 
-      # === Ensure the Feedback PR (issue #86) ===
+      # === Ensure the Feedback PR ===
       # Opt-in per assignment (feedback-pr). One long-lived PR per repo:
       # base = the frozen `feedback` branch at the baseline commit,
       # head = the default branch, so the teacher reviews the full
