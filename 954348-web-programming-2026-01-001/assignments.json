@@ -1,4 +1,19 @@
 {
   "schema": "classroom50/assignments/v1",
-  "assignments": []
+  "assignments": [
+    {
+      "slug": "954348-2026-01-001-template-control-flow",
+      "name": "Template Control Flow",
+      "mode": "individual",
+      "autograder": "default",
+      "feedback_pr": true,
+      "due": "2026-07-17T03:39:00Z",
+      "due_meta": {
+        "input": "2026-07-17T10:39:00",
+        "zone": "Asia/Bangkok",
+        "offset": "+07:00",
+        "source": "auto-detected"
+      }
+    }
+  ]
 }
