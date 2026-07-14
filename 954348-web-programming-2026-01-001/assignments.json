@@ -6,7 +6,8 @@
       "name": "UI Elements",
       "mode": "individual",
       "autograder": "default",
-      "feedback_pr": true
+      "feedback_pr": true,
+      "description": "UI Elements"
     }
   ]
 }
