@@ -8,6 +8,13 @@
       "autograder": "default",
       "feedback_pr": true,
       "description": "UI Elements"
+    },
+    {
+      "slug": "954348-2026-01-001-css",
+      "name": "CSS",
+      "mode": "individual",
+      "autograder": "default",
+      "feedback_pr": true
     }
   ]
 }
