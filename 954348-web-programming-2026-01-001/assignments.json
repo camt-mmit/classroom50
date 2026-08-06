@@ -15,6 +15,13 @@
       "mode": "individual",
       "autograder": "default",
       "feedback_pr": true
+    },
+    {
+      "slug": "954348-2026-01-001-controllers",
+      "name": "Controllers",
+      "mode": "individual",
+      "autograder": "default",
+      "feedback_pr": true
     }
   ]
 }
