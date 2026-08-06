@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Teacher-triggered scores collector.
 
-Walks the classroom team × assignment manifest: for each (team member,
+Walks the classroom teams × assignment manifest: for each (team member,
 assignment) pair, pages the canonical `<classroom>-<assignment>-<username>`
 repo's `submit/*` releases, validates each `result.json` asset, and upserts
-into `<classroom>/scores.json`. The classroom GitHub team is the source of
-truth for enrollment; the roster (roster.csv, or the legacy name) is only a
+into `<classroom>/scores.json`. The polled members are the union of the
+classroom's STUDENT team and its STAFF teams (teacher/hta/ta), so a staff
+member who accepted an assignment to test the autograde flow is collected like
+a student. Staff who never accepted have no assignment repo, so their poll
+returns no releases and they produce no entry (the "accepted" gate is implicit
+in the per-repo release read). The classroom GitHub teams are the source of
+truth for enrollment; the roster (roster.csv) is only a
 best-effort source of optional display metadata (name/section/email).
 
 `scores.json` is keyed by assignment slug under root `assignments`: each value
@@ -73,12 +78,12 @@ SUBMIT_TAG_PREFIX = "submit/"
 
 # Repo permission the grant gives each staff role's team. Hand-mirrored from Go
 # StaffTeamRepoPermissions (source of truth; parity-tested) — keep in lockstep.
-# The TA-team template read is granted eagerly at assignment add/reuse and
-# classroom migrate (Go side, which hardcodes read there); this collect-time
+# The head-TA/TA-team template read is granted eagerly at assignment add/reuse
+# and classroom migrate (Go side, which hardcodes read there); this collect-time
 # grant reads the value below and is the idempotent re-affirm. A role absent
-# here gets nothing (the instructor team is granted at classroom setup, so only
-# TA needs a grant today).
-STAFF_TEAM_PERMISSIONS = {"ta": "pull"}
+# here gets nothing (the teacher team is an org owner with access via ownership,
+# so only the non-owner staff teams — head-TA and TA — need a grant).
+STAFF_TEAM_PERMISSIONS = {"hta": "pull", "ta": "pull"}
 
 RFC3339_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d"
@@ -96,19 +101,16 @@ MAX_RESULT_BYTES = 10 * 1024 * 1024
 # Required roster columns written by `gh teacher classroom add`. Mirrors
 # RosterColumns in cli/gh-teacher/internal/configrepo/students_csv.go and the
 # web app's STUDENT_CSV_FIELDS. Identity/metadata columns; `role`
-# (instructor/ta/student, or "") is best-effort recorded metadata refreshed from
+# (teacher/ta/student, or "") is best-effort recorded metadata refreshed from
 # the classroom's GitHub teams — the teams, not this column, remain the
 # enrollment authority. A pre-role file (ending at github_id) still reads fine:
 # DictReader is header-keyed and a missing column just yields "".
 ROSTER_REQUIRED_COLUMNS = ("username", "first_name", "last_name", "email", "section", "github_id", "role")
 
-# Per-classroom roster file. ROSTER_FILENAME is the current name; a reader
-# falls back to LEGACY_ROSTER_FILENAME for classrooms bootstrapped before the
-# rename (writers always target roster.csv). Mirrors contract.RosterFilename /
-# contract.LegacyRosterFilename in cli/shared/contract/contract.go with NO
-# compile-time link — keep byte-identical.
+# Per-classroom roster file. Mirrors contract.RosterFilename in
+# cli/shared/contract/contract.go with NO compile-time link — keep
+# byte-identical.
 ROSTER_FILENAME = "roster.csv"
-LEGACY_ROSTER_FILENAME = "students.csv"
 
 # The exact on-disk roster.csv header. Must equal FullRosterHeader in the Go
 # students_csv.go (asserted by TestFullRosterHeader) and the web app's
@@ -291,7 +293,7 @@ def iter_classrooms(
     Collection is TEAM-driven: the classroom GitHub team is the source of truth
     for enrollment, so this no longer reads the roster to decide who to poll
     (the team enumeration in collect_classroom drives the pairs). The roster
-    (roster.csv, or the legacy name) is only best-effort display metadata,
+    (roster.csv) is only best-effort display metadata,
     joined onto collected results and also consumed elsewhere (the Go download
     scores.csv join and the web roster view).
     """
@@ -330,50 +332,119 @@ def iter_classrooms(
 
 def load_roster_metadata(classroom_dir: pathlib.Path) -> dict[str, dict[str, str]]:
     """Best-effort roster read for optional display metadata, keyed by
-    lowercased username. Tries roster.csv first, then the legacy name
-    (classrooms bootstrapped before the rename); writers always target
-    roster.csv. The classroom GitHub team — not this file — is authoritative
-    for enrollment, so a missing/unreadable/malformed roster is NOT fatal: it
-    just yields no metadata (blank name/section/email), never a crash or a
-    dropped student.
+    lowercased username, from roster.csv. The classroom GitHub team — not this
+    file — is authoritative for enrollment, so a missing/unreadable/malformed
+    roster is NOT fatal: it just yields no metadata (blank name/section/email),
+    never a crash or a dropped student.
     """
-    for filename in (ROSTER_FILENAME, LEGACY_ROSTER_FILENAME):
-        path = classroom_dir / filename
-        if not path.is_file():
-            continue
-        try:
-            with path.open(newline="") as fh:
-                reader = csv.DictReader(fh)
-                meta: dict[str, dict[str, str]] = {}
-                for row in reader:
-                    username = (row.get("username") or "").strip()
-                    if not username:
-                        continue
-                    meta[username.lower()] = {
-                        col: (row.get(col) or "").strip()
-                        for col in ("first_name", "last_name", "email", "section")
-                    }
-            return meta
-        except (OSError, csv.Error):
-            # Best-effort: a read/parse failure degrades to blank metadata.
-            return {}
-    return {}
+    path = classroom_dir / ROSTER_FILENAME
+    if not path.is_file():
+        return {}
+    try:
+        with path.open(newline="") as fh:
+            reader = csv.DictReader(fh)
+            meta: dict[str, dict[str, str]] = {}
+            for row in reader:
+                username = (row.get("username") or "").strip()
+                if not username:
+                    continue
+                meta[username.lower()] = {
+                    col: (row.get(col) or "").strip()
+                    for col in ("first_name", "last_name", "email", "section")
+                }
+        return meta
+    except (OSError, csv.Error):
+        # Best-effort: a read/parse failure degrades to blank metadata.
+        return {}
 
 
 # Per-classroom collection ----------------------------------------------------
 
 
+def is_empty_repo(entry: dict[str, Any]) -> bool:
+    """True only when empty_repo is the boolean `true`. The wire contract is a
+    JSON boolean (schema type "boolean"; Go decodes into a strict `bool`), so a
+    non-boolean value from a hand-edited manifest is not empty_repo — matching
+    the Go and TypeScript readers (TS uses `=== true`). Every Python reader
+    (collect/regrade/runner) MUST use this predicate so all tools agree."""
+    return entry.get("empty_repo") is True
+
+
 def valid_assignment_slugs(assignments: dict[str, Any]) -> list[str]:
-    """Slugs worth collecting: non-empty strings, in manifest order. main()'s
-    zero-submission guard counts these; the collect loop applies the same
-    predicate inline (it also needs each entry's `due`), so both agree on what
-    counts as collectable."""
+    """Slugs worth collecting: non-empty strings, in manifest order, excluding
+    empty_repo assignments (their bare repos never autograde, so polling them
+    would only produce dead gradebook rows). main()'s zero-submission guard
+    counts these; the collect loop applies the same predicate inline (it also
+    needs each entry's `due`), so both agree on what counts as collectable."""
+    slugs: list[str] = []
+    for entry in assignments.get("assignments") or []:
+        slug = entry.get("slug")
+        if isinstance(slug, str) and slug and not is_empty_repo(entry):
+            slugs.append(slug)
+    return slugs
+
+
+def all_assignment_slugs(assignments: dict[str, Any]) -> list[str]:
+    """Every valid slug including empty_repo assignments. Staff access grants
+    use this instead of valid_assignment_slugs: a bare repo never autogrades,
+    but TAs still need read on it to review the student-built work."""
     slugs: list[str] = []
     for entry in assignments.get("assignments") or []:
         slug = entry.get("slug")
         if isinstance(slug, str) and slug:
             slugs.append(slug)
     return slugs
+
+
+def list_enrolled_logins(
+    api_url: str,
+    org: str,
+    classroom_meta: dict[str, Any],
+    classroom_short: str,
+    service_token: str,
+) -> tuple[list[str], set[str]]:
+    """Return (polled logins, student logins). The first is the case-insensitive
+    dedup union of the student team and every staff team's members, first-seen
+    order/casing preserved (student team first). The second is the lowercased
+    set of STUDENT-team logins — used only so the per-assignment "X of Y
+    submitted" denominator counts students (expected to submit) rather than
+    every staffer polled (a non-accepting TA is a tester, not missing work).
+
+    Collection polls staff (teacher/hta/ta) too so a staff member testing an
+    assignment is graded like a student — but only when they've ACCEPTED: a
+    staff member with no `<classroom>-<assignment>-<username>` repo returns no
+    releases and so produces no entry (the accepted gate falls out of the
+    per-repo poll; no explicit staff check is needed). A staff member on no
+    team, or one who never accepted, never appears.
+
+    A hard auth/network error (401/403/599) propagates so main() aborts; a soft
+    per-team failure (e.g. a 404 on an uncreated staff team) is warned and that
+    team contributes nobody, matching how the staff-grant pass tolerates a
+    missing team."""
+    student_slug = resolve_team_slug(classroom_meta, classroom_short)
+    # Student team first so its casing wins in the dedup (the repo-name formula
+    # lowercases anyway, so casing is cosmetic — but keep it deterministic).
+    student_logins = list_team_member_logins(api_url, org, student_slug, service_token)
+    logins = list(student_logins)
+    for role, staff_slug in resolve_staff_team_slugs(classroom_meta).items():
+        try:
+            logins.extend(
+                list_team_member_logins(api_url, org, staff_slug, service_token)
+            )
+        except urllib.error.HTTPError as exc:
+            if is_hard_http_error(exc):
+                raise
+            emit_warning(
+                f"{classroom_short}: could not read staff team {staff_slug!r} "
+                f"({role}) members: HTTP {exc.code} ({exc.reason or 'no reason'}); "
+                f"skipping that team's members for collection."
+            )
+        except (json.JSONDecodeError, ValueError) as exc:
+            emit_warning(
+                f"{classroom_short}: staff team {staff_slug!r} ({role}) member "
+                f"listing malformed ({exc}); skipping that team's members."
+            )
+    return _dedupe_logins(logins), {u.strip().lower() for u in student_logins}
 
 
 def collect_classroom(
@@ -407,15 +478,21 @@ def collect_classroom(
     # token-access problem.
     mode_flip_assignments = 0
 
-    # Team-driven username source: the classroom GitHub team is authoritative
-    # for enrollment. The roster (roster.csv, or the legacy name) is only
-    # best-effort display metadata, so the (student, assignment) pairs come from
-    # the team member list, NOT the CSV. A 404 (team missing) or empty team
-    # yields no pairs (warn + return), replacing the old "roster missing" skip.
-    # A hard auth/network error propagates so main() aborts the whole run loudly.
+    # Team-driven username source: the classroom GitHub teams are authoritative
+    # for enrollment. The roster (roster.csv) is only
+    # best-effort display metadata, so the (username, assignment) pairs come
+    # from the team member lists, NOT the CSV. The set is the union of the
+    # STUDENT team and every STAFF team (teacher/hta/ta) so a staff member who
+    # accepted an assignment (to test the autograde flow) is collected like a
+    # student — staff who never accepted have no repo, hence no releases, hence
+    # no entry (the accepted gate is implicit in the per-repo poll). A 404
+    # (student team missing) or empty union yields no pairs (warn + return). A
+    # hard auth/network error propagates so main() aborts the whole run loudly.
     team_slug = resolve_team_slug(classroom_meta, classroom_short)
     try:
-        team_logins = list_team_member_logins(api_url, org, team_slug, service_token)
+        team_usernames, student_logins = list_enrolled_logins(
+            api_url, org, classroom_meta, classroom_short, service_token
+        )
     except urllib.error.HTTPError as exc:
         if is_hard_http_error(exc):
             raise
@@ -434,22 +511,28 @@ def collect_classroom(
         )
         return results, mode_flip_assignments
 
-    if not team_logins:
+    if not team_usernames:
         emit_warning(
-            f"{classroom_short}: team {team_slug!r} has no members — no "
-            f"(student, assignment) pairs to poll; skipping."
+            f"{classroom_short}: teams {team_slug!r} (and staff teams) have no "
+            f"members — no (username, assignment) pairs to poll; skipping."
         )
         return results, mode_flip_assignments
 
-    # Deduplicate case-insensitively, preserving first-seen order/casing.
-    team_usernames = _dedupe_logins(team_logins)
-
-    # Group attribution credits a collaborator only if on the team (owner always
-    # credited) — same trust model, team-sourced set.
+    # Group attribution credits a collaborator only if on a classroom team
+    # (owner always credited) — same trust model, team-sourced set. Staff are in
+    # the union, so a staff collaborator on a group repo can be credited too.
     roster_logins = {u.lower() for u in team_usernames}
     for entry in assignments.get("assignments") or []:
         slug = entry.get("slug")
         if not isinstance(slug, str) or not slug:
+            continue
+        # empty_repo assignments never autograde — same predicate as
+        # valid_assignment_slugs, kept in lockstep.
+        if is_empty_repo(entry):
+            print(
+                f"{classroom_short}/{slug}: empty_repo assignment — autograding "
+                f"is disabled; skipping collection"
+            )
             continue
 
         due_raw = entry.get("due")
@@ -464,6 +547,11 @@ def collect_classroom(
         assignment_type = "group" if is_group else "individual"
 
         submitted = 0
+        # Staff (non-student-team) members who actually submitted this
+        # assignment. They count toward the "X of Y" denominator only when they
+        # submitted — a non-accepting staffer is a tester, not missing work, so
+        # counting every polled staffer in Y would understate student coverage.
+        staff_submitted = 0
         # Repos under THIS assignment whose only submissions were rejected by
         # validation (mode-flip symptom); reported once per assignment below.
         mode_flip_repos: list[str] = []
@@ -622,8 +710,14 @@ def collect_classroom(
 
             results.append(entry_row)
             submitted += 1
+            if username.strip().lower() not in student_logins:
+                staff_submitted += 1
 
-        print(f"{classroom_short}/{slug}: {submitted}/{len(team_usernames)} submitted")
+        # Denominator: students (expected to submit) + staff who actually
+        # submitted. Non-accepting staff (polled but no repo) are excluded so
+        # the coverage line reads as student coverage, not inflated by testers.
+        expected = len(student_logins) + staff_submitted
+        print(f"{classroom_short}/{slug}: {submitted}/{expected} submitted")
 
         if mode_flip_repos:
             mode_flip_assignments += 1
@@ -747,7 +841,10 @@ def grant_classroom_team_access(
     if not grant_slugs:
         return
 
-    slugs = valid_assignment_slugs(assignments)
+    # ALL slugs, not just the collectable subset: empty_repo assignments are
+    # skipped by collection but their student repos still exist and staff
+    # still need access to review them.
+    slugs = all_assignment_slugs(assignments)
     if not slugs:
         return
 
@@ -987,7 +1084,7 @@ def save_scores(path: pathlib.Path, scores: dict[str, Any]) -> None:
         payload = json.dumps(scores, indent=2, allow_nan=False) + "\n"
     except ValueError as exc:
         raise ScoresFileError(f"{path}: encode failed: {exc}") from exc
-    # Re-parse to catch silent corruption (e.g. NaN in a score) before touching
+    # Re-parse to catch silent corruption (e.g., NaN in a score) before touching
     # the destination file.
     strict_json_loads(payload)
     tmp_path = path.with_name(path.name + ".tmp")
@@ -1068,7 +1165,7 @@ def apply_updates(scores: dict[str, Any], updates: Iterable[dict[str, Any]]) -> 
             continue
         if same_submission(existing, entry):
             continue
-        # A group re-collect that drops a previously-credited member (e.g. a
+        # A group re-collect that drops a previously-credited member (e.g., a
         # teammate who left the classroom team but is still a repo collaborator)
         # replaces the entry in place, silently revoking their shared credit.
         # The owner-only warning in collect_classroom only fires on collapse to
@@ -1080,7 +1177,7 @@ def apply_updates(scores: dict[str, Any], updates: Iterable[dict[str, Any]]) -> 
                 f"{slug}: group entry owned by {row_key(entry)!r} lost previously-"
                 f"credited member(s) {', '.join(sorted(dropped))} on re-collect. A "
                 f"teammate is credited only while on the classroom team; verify the "
-                f"drop is intended (e.g. an unenrollment) and not a team-vs-roster "
+                f"drop is intended (e.g., an unenrollment) and not a team-vs-roster "
                 f"divergence, since the shared score is now revoked for them."
             )
         # Preserve an explicit "override": false on replacement — the teacher's
@@ -1097,7 +1194,7 @@ def _dropped_group_members(
     existing: dict[str, Any], incoming: dict[str, Any]
 ) -> set[str]:
     """Members credited on the existing group entry but absent from the incoming
-    one (case-insensitive), i.e. teammates whose shared credit a re-collect
+    one (case-insensitive), i.e., teammates whose shared credit a re-collect
     would silently revoke. Empty for individual entries or when the credited set
     didn't shrink."""
     def credited(entry: dict[str, Any]) -> set[str]:
@@ -1293,7 +1390,7 @@ def all_submit_releases(
 ) -> list[dict[str, Any]]:
     """Every submit-tag release for a repo, newest first, walking the full
     /releases pagination — the complete submission history (a student who pushed
-    N times has N submit/* releases, all returned). Non-submit releases (e.g. a
+    N times has N submit/* releases, all returned). Non-submit releases (e.g., a
     hand-created tag) are filtered out. A 404 (no releases, or repo not
     accepted) yields an empty list.
 
@@ -1449,7 +1546,7 @@ def list_repo_collaborator_logins(
     `role_name == "admin"` here was a bug: a group teammate who is also an org
     owner (admin on every repo), or a founder kept as repo `admin` to invite
     teammates, is `admin` yet a legitimate student — the old filter dropped
-    them, crediting only the owner. Non-student instructors/TAs/org-owners are
+    them, crediting only the owner. Non-student teachers/TAs/org-owners are
     excluded downstream because they're not on the roster, so dropping the admin
     filter here loses no protection.
 
@@ -1503,7 +1600,7 @@ def group_member_usernames(
     sorted and deduped, owner guaranteed present. Crediting is gated on team
     membership, NOT collaborator permission: a teammate on the classroom team is
     credited whether push or admin (an org owner is admin everywhere; a founder
-    is kept admin to invite). A collaborator not on the team (instructor, TA,
+    is kept admin to invite). A collaborator not on the team (teacher, TA,
     non-student org owner, or an account added out-of-band) is never credited.
     Raises on the underlying HTTP/parse error so the caller can fall back to
     owner-only.

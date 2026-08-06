@@ -131,6 +131,14 @@ def main() -> int:
     classroom_dir = base_dir / classroom_filter
     try:
         roster = load_roster(classroom_dir, assignment_filter, api_url, org, service_token)
+    except EmptyRepoAssignment:
+        # Successful no-op, not a failure: the teacher (or a stale button)
+        # targeted an assignment whose repos are deliberately bare.
+        print(
+            f"regrade {classroom_filter}/{assignment_filter}: assignment has "
+            f"empty_repo enabled — autograding is disabled, nothing to regrade."
+        )
+        return 0
     except RegradeInputError as exc:
         emit_error(str(exc))
         return 1
@@ -191,7 +199,7 @@ def main() -> int:
         try:
             outcome = regrade_repo(api_url, org, repo_name, service_token)
         except _SkipRepo:
-            # Benign per-repo skip (e.g. the latest run can't be re-run right
+            # Benign per-repo skip (e.g., the latest run can't be re-run right
             # now); already warned at the source.
             skipped += 1
             continue
@@ -335,7 +343,7 @@ def rerun_workflow_run(
     """Re-run a completed workflow run via the Actions rerun API. Replays at
     the same commit; runtime-fetched resources (runner.py and the autograder
     bundle, both from Pages at grade time) are re-fetched, so a teacher's updated
-    autograder takes effect. A 403 (not re-runnable — e.g. still in progress) is
+    autograder takes effect. A 403 (not re-runnable — e.g., still in progress) is
     surfaced as a per-repo skip by the caller, not a hard auth failure, so one
     un-rerunnable repo doesn't abort the run."""
     url = f"{_repo_url(api_url, org, repo)}/actions/runs/{run_id}/rerun"
@@ -354,7 +362,7 @@ def rerun_workflow_run(
 
 
 class _SkipRepo(Exception):
-    """A benign per-repo condition (e.g. a non-rerunnable run) that should be
+    """A benign per-repo condition (e.g., a non-rerunnable run) that should be
     counted as skipped, not failed."""
 
 
@@ -539,6 +547,22 @@ class RegradeInputError(Exception):
     """A missing/malformed classroom dir, classroom.json, or assignments.json."""
 
 
+class EmptyRepoAssignment(Exception):
+    """The target assignment has empty_repo: true — student repos carry no
+    autograde workflow, so there is nothing to re-run and no HEAD worth tagging
+    (the first-grade fallback would push submit/* tags that fire nothing).
+    main() treats this as a successful no-op, not an error."""
+
+
+def is_empty_repo(entry: dict[str, Any]) -> bool:
+    """True only when empty_repo is the boolean `true`. The wire contract is a
+    JSON boolean (Go decodes a strict `bool`; TS uses `=== true`), so a
+    non-boolean value from a hand-edited manifest is not empty_repo. Keep this
+    byte-identical to collect_scores.py / the autograde-runner so every tool
+    agrees on the predicate."""
+    return entry.get("empty_repo") is True
+
+
 def load_roster(
     classroom_dir: pathlib.Path,
     assignment_slug: str,
@@ -571,16 +595,21 @@ def load_roster(
             f"{classroom_dir.name}/assignments.json schema = "
             f"{assignments.get('schema')!r}, want {ASSIGNMENTS_SCHEMA_V1!r}"
         )
-    slugs = {
-        e.get("slug")
+    entries = {
+        e["slug"]: e
         for e in (assignments.get("assignments") or [])
         if isinstance(e, dict) and isinstance(e.get("slug"), str) and e.get("slug")
     }
-    if assignment_slug not in slugs:
+    if assignment_slug not in entries:
         raise RegradeInputError(
             f"assignment {assignment_slug!r} is not registered in "
             f"{classroom_dir.name}/assignments.json"
         )
+    # empty_repo assignments never autograde (accept commits no workflow), so
+    # skip before the team listing — otherwise the first-grade fallback would
+    # push useless submit/* tags into every student repo.
+    if is_empty_repo(entries[assignment_slug]):
+        raise EmptyRepoAssignment(assignment_slug)
 
     # Resolve the classroom team slug: classroom.json's authoritative team.slug
     # (GitHub may re-slug on a name collision), else the derived slug.
