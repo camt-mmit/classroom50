@@ -1,4 +1,126 @@
 {
   "schema": "classroom50/scores/v1",
-  "assignments": {}
+  "assignments": {
+    "954348-2026-01-001-ui-elements": {
+      "type": "individual",
+      "entries": [
+        {
+          "owner": "mrpachara",
+          "first_name": "Pachara",
+          "last_name": "Tinamas",
+          "email": "pachara.t@cmu.ac.th",
+          "submissions": [
+            {
+              "schema": "classroom50/result/v1",
+              "classroom": "954348-web-programming-2026-01-001",
+              "assignment_type": "individual",
+              "owner": "mrpachara",
+              "submission": "submit/2026-07-21T03-43-41Z-41af69d",
+              "commit": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/commit/41af69d3d4e586a4f22f98e50e3bbe1ac7b31c7c",
+              "release": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/releases/tag/submit%2F2026-07-21T03-43-41Z-41af69d",
+              "review": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/compare/51fc6599e32e2b456ebc77ee36134caf704e3d48...41af69d3d4e586a4f22f98e50e3bbe1ac7b31c7c",
+              "datetime": "2026-07-21T03:43:23Z",
+              "graded_at": "2026-07-21T03:43:55Z",
+              "score": 0,
+              "max-score": 0,
+              "tests": [],
+              "submitted_by": {
+                "username": "mrpachara",
+                "id": 10294920
+              }
+            },
+            {
+              "schema": "classroom50/result/v1",
+              "classroom": "954348-web-programming-2026-01-001",
+              "assignment_type": "individual",
+              "owner": "mrpachara",
+              "submission": "submit/2026-07-19T03-49-07Z-3f9b8e0",
+              "commit": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/commit/3f9b8e035a317df5e7364c5e7a1f2eb99d972432",
+              "release": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/releases/tag/submit%2F2026-07-19T03-49-07Z-3f9b8e0",
+              "review": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/compare/51fc6599e32e2b456ebc77ee36134caf704e3d48...3f9b8e035a317df5e7364c5e7a1f2eb99d972432",
+              "datetime": "2026-07-19T03:48:48Z",
+              "graded_at": "2026-07-19T03:49:18Z",
+              "score": 0,
+              "max-score": 0,
+              "tests": [],
+              "submitted_by": {
+                "username": "mrpachara",
+                "id": 10294920
+              }
+            },
+            {
+              "schema": "classroom50/result/v1",
+              "classroom": "954348-web-programming-2026-01-001",
+              "assignment_type": "individual",
+              "owner": "mrpachara",
+              "submission": "submit/2026-07-17T05-07-53Z-a581c87",
+              "commit": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/commit/a581c8733cfdbc7db65d21f725f1dbf39ff97c0e",
+              "release": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/releases/tag/submit%2F2026-07-17T05-07-53Z-a581c87",
+              "review": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/compare/51fc6599e32e2b456ebc77ee36134caf704e3d48...a581c8733cfdbc7db65d21f725f1dbf39ff97c0e",
+              "datetime": "2026-07-17T05:07:32Z",
+              "graded_at": "2026-07-17T05:08:07Z",
+              "score": 0,
+              "max-score": 0,
+              "tests": [],
+              "submitted_by": {
+                "username": "mrpachara",
+                "id": 10294920
+              }
+            },
+            {
+              "schema": "classroom50/result/v1",
+              "classroom": "954348-web-programming-2026-01-001",
+              "assignment_type": "individual",
+              "owner": "mrpachara",
+              "submission": "submit/2026-07-16T12-16-09Z-eb774de",
+              "commit": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/commit/eb774debbf1f0901d8a8d1dba931d38d65097b83",
+              "release": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/releases/tag/submit%2F2026-07-16T12-16-09Z-eb774de",
+              "review": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-ui-elements-mrpachara/compare/51fc6599e32e2b456ebc77ee36134caf704e3d48...eb774debbf1f0901d8a8d1dba931d38d65097b83",
+              "datetime": "2026-07-16T12:15:50Z",
+              "graded_at": "2026-07-16T12:16:25Z",
+              "score": 0,
+              "max-score": 0,
+              "tests": [],
+              "submitted_by": {
+                "username": "mrpachara",
+                "id": 10294920
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "954348-2026-01-001-css": {
+      "type": "individual",
+      "entries": [
+        {
+          "owner": "mrpachara",
+          "first_name": "Pachara",
+          "last_name": "Tinamas",
+          "email": "pachara.t@cmu.ac.th",
+          "submissions": [
+            {
+              "schema": "classroom50/result/v1",
+              "classroom": "954348-web-programming-2026-01-001",
+              "assignment_type": "individual",
+              "owner": "mrpachara",
+              "submission": "submit/2026-07-14T18-50-21Z-02ec127",
+              "commit": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-css-mrpachara/commit/02ec127e9f0e856f64b69d1c22cf8929395358d3",
+              "release": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-css-mrpachara/releases/tag/submit%2F2026-07-14T18-50-21Z-02ec127",
+              "review": "https://github.com/camt-mmit/954348-web-programming-2026-01-001-954348-2026-01-001-css-mrpachara/compare/5c2bc9e4ad2566b3d79044870fef29eb0ec67332...02ec127e9f0e856f64b69d1c22cf8929395358d3",
+              "datetime": "2026-07-14T18:50:05Z",
+              "graded_at": "2026-07-14T18:50:33Z",
+              "score": 0,
+              "max-score": 0,
+              "tests": [],
+              "submitted_by": {
+                "username": "mrpachara",
+                "id": 10294920
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
 }
