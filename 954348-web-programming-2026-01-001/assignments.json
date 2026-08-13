@@ -7,21 +7,33 @@
       "mode": "individual",
       "autograder": "default",
       "feedback_pr": true,
-      "description": "UI Elements"
+      "description": "UI Elements",
+      "submission_mode": "tag",
+      "grading": {
+        "mode": "auto"
+      }
     },
     {
       "slug": "954348-2026-01-001-css",
       "name": "CSS",
       "mode": "individual",
       "autograder": "default",
-      "feedback_pr": true
+      "feedback_pr": true,
+      "submission_mode": "tag",
+      "grading": {
+        "mode": "auto"
+      }
     },
     {
       "slug": "954348-2026-01-001-controllers",
       "name": "Controllers",
       "mode": "individual",
       "autograder": "default",
-      "feedback_pr": true
+      "feedback_pr": true,
+      "submission_mode": "tag",
+      "grading": {
+        "mode": "auto"
+      }
     }
   ]
 }
