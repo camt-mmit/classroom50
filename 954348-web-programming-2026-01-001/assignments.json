@@ -34,6 +34,19 @@
       "grading": {
         "mode": "auto"
       }
+    },
+    {
+      "slug": "954348-2026-01-001-database",
+      "name": "Database",
+      "mode": "individual",
+      "autograder": "default",
+      "feedback_pr": false,
+      "empty_repo": true,
+      "description": "Laravel ORM",
+      "submission_mode": "every-push",
+      "grading": {
+        "mode": "off"
+      }
     }
   ]
 }
