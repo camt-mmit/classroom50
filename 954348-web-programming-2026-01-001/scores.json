@@ -88,7 +88,8 @@
             }
           ]
         }
-      ]
+      ],
+      "collected_at": "2026-08-15T04:46:14Z"
     },
     "954348-2026-01-001-css": {
       "type": "individual",
@@ -120,7 +121,13 @@
             }
           ]
         }
-      ]
+      ],
+      "collected_at": "2026-08-15T04:46:14Z"
+    },
+    "954348-2026-01-001-controllers": {
+      "type": "individual",
+      "entries": [],
+      "collected_at": "2026-08-15T04:46:14Z"
     }
   }
 }
