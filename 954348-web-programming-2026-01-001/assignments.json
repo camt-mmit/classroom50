@@ -36,7 +36,7 @@
       }
     },
     {
-      "slug": "954348-2026-01-001-database",
+      "slug": "954348-2026-01-001-databa",
       "name": "Database",
       "mode": "individual",
       "autograder": "default",
@@ -46,7 +46,9 @@
       "submission_mode": "every-push",
       "grading": {
         "mode": "off"
-      }
+      },
+      "renamed_from": "954348-2026-01-001-database",
+      "locked": true
     }
   ]
 }
